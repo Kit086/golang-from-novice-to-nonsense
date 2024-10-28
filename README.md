@@ -154,6 +154,11 @@
   - [**8.2 Channel 的使用与同步**](#82-channel-的使用与同步)
     - [**定义与使用 Channel：**](#定义与使用-channel)
     - [**Channel 的阻塞特性：**](#channel-的阻塞特性)
+    - [**常见的使用场景示例**](#常见的使用场景示例)
+      - [**示例 1：传感器数据采集**](#示例-1传感器数据采集)
+      - [**示例 2：任务分配与结果收集**](#示例-2任务分配与结果收集)
+      - [**示例 3：多 Goroutine 日志记录**](#示例-3多-goroutine-日志记录)
+    - [**总结**](#总结)
   - [**8.3 Select 语句与多通道处理**](#83-select-语句与多通道处理)
     - [**示例：使用 Select**](#示例使用-select)
   - [**8.4 并发安全：Mutex 和 WaitGroup**](#84-并发安全mutex-和-waitgroup)
@@ -2242,6 +2247,118 @@ func main() {
 ### **Channel 的阻塞特性：**
 - 发送和接收操作都会阻塞，直到另一端准备好。
 - 可以利用这种阻塞机制实现**同步**。
+
+### **常见的使用场景示例**
+
+为了让初学者更好地理解在什么场景下需要多个 Goroutine 共享资源，我们可以结合一些现实世界中的例子来说明 Channel 的用法：
+
+#### **示例 1：传感器数据采集**
+假设你有多个传感器，每个传感器在后台采集数据并发送到一个中心处理系统。这时候可以使用 Goroutine 来模拟多个传感器，每个传感器的数据通过 Channel 传输到主 Goroutine 进行汇总和处理。
+
+```go
+package main
+import (
+    "fmt"
+    "time"
+)
+
+func sensor(id int, ch chan int) {
+    for i := 0; i < 5; i++ {
+        ch <- id * 10 + i // 模拟发送传感器数据
+        time.Sleep(time.Millisecond * 100) // 模拟采集延迟
+    }
+}
+
+func main() {
+    ch := make(chan int)
+    for i := 1; i <= 3; i++ {
+        go sensor(i, ch) // 启动 3 个传感器 Goroutine
+    }
+
+    for i := 0; i < 15; i++ {
+        data := <-ch // 接收来自传感器的数据
+        fmt.Println("接收到的数据：", data)
+    }
+}
+```
+在这个示例中，多个 Goroutine 模拟多个传感器，各自独立采集数据并通过 Channel 发送到主 Goroutine，主 Goroutine 进行汇总和处理。
+
+#### **示例 2：任务分配与结果收集**
+假设我们有多个任务需要处理，可以启动多个 Goroutine 去执行任务，并通过 Channel 把处理结果发送回来给主 Goroutine 进行汇总。比如，我们需要并行计算一组数字的平方。
+
+```go
+package main
+import "fmt"
+
+func worker(id int, jobs <-chan int, results chan<- int) {
+    for num := range jobs {
+        results <- num * num // 计算平方并发送到 results Channel
+    }
+}
+
+func main() {
+    jobs := make(chan int, 5)
+    results := make(chan int, 5)
+
+    for w := 1; w <= 3; w++ {
+        go worker(w, jobs, results) // 启动 3 个 worker Goroutine
+    }
+
+    // 发送 5 个任务到 jobs Channel
+    for j := 1; j <= 5; j++ {
+        jobs <- j
+    }
+    close(jobs) // 所有任务已发送，关闭 jobs Channel
+
+    // 收集所有结果
+    for a := 1; a <= 5; a++ {
+        fmt.Println("结果：", <-results)
+    }
+}
+```
+在这个例子中，我们启动了 3 个 worker Goroutine 处理任务，每个 worker 从 `jobs` Channel 中获取任务，计算完成后将结果发送到 `results` Channel。主 Goroutine 负责收集所有结果。
+
+#### **示例 3：多 Goroutine 日志记录**
+在一个服务器中，多个 Goroutine 可能会并发执行并产生日志。如果每个 Goroutine 都独立写日志，可能会导致混乱。因此，可以启动一个独立的日志处理 Goroutine，通过 Channel 接收各个 Goroutine 的日志信息，从而集中处理日志。
+
+```go
+package main
+import (
+    "fmt"
+    "time"
+)
+
+func worker(id int, logCh chan string) {
+    for i := 0; i < 3; i++ {
+        logCh <- fmt.Sprintf("Worker %d: 完成任务 %d", id, i)
+        time.Sleep(time.Millisecond * 200) // 模拟工作过程
+    }
+}
+
+func logger(logCh chan string) {
+    for log := range logCh {
+        fmt.Println("日志：", log)
+    }
+}
+
+func main() {
+    logCh := make(chan string)
+    go logger(logCh) // 启动日志处理 Goroutine
+
+    for i := 1; i <= 3; i++ {
+        go worker(i, logCh) // 启动多个 worker Goroutine
+    }
+
+    time.Sleep(time.Second * 2) // 等待所有 worker 完成任务
+    close(logCh) // 关闭日志 Channel
+}
+```
+在这个例子中，多个 worker Goroutine 通过 `logCh` Channel 向独立的日志处理 Goroutine 发送日志信息，保证日志的集中管理和按序输出。
+
+### **总结**
+- Channel 非常适合用来**在 Goroutine 之间共享数据**，实现并发安全的通信。
+- 在实际开发中，Channel 可以用来实现**数据采集、任务分配与收集、日志集中处理**等多种场景，帮助我们更好地协调多个 Goroutine 的协作。
+- Channel 的**阻塞特性**使得它不仅可以用于数据传递，还可以用于实现**同步机制**，确保 Goroutine 之间的执行顺序和数据一致性。
 
 ---
 
