@@ -151,6 +151,9 @@
     - [**什么是并发？**](#什么是并发)
     - [**Goroutine：Go 的轻量级线程**](#goroutinego-的轻量级线程)
     - [**示例：启动 Goroutine**](#示例启动-goroutine)
+    - [**更优的 Goroutine 同步方式：使用 `sync.WaitGroup`**](#更优的-goroutine-同步方式使用-syncwaitgroup)
+    - [**更进一步：使用 Channel 实现同步**](#更进一步使用-channel-实现同步)
+    - [**总结**](#总结)
   - [**8.2 Channel 的使用与同步**](#82-channel-的使用与同步)
     - [**定义与使用 Channel：**](#定义与使用-channel)
     - [**Channel 的阻塞特性：**](#channel-的阻塞特性)
@@ -158,7 +161,7 @@
       - [**示例 1：传感器数据采集**](#示例-1传感器数据采集)
       - [**示例 2：任务分配与结果收集**](#示例-2任务分配与结果收集)
       - [**示例 3：多 Goroutine 日志记录**](#示例-3多-goroutine-日志记录)
-    - [**总结**](#总结)
+    - [**总结**](#总结-1)
   - [**8.3 Select 语句与多通道处理**](#83-select-语句与多通道处理)
     - [**示例：使用 Select**](#示例使用-select)
   - [**8.4 并发安全：Mutex 和 WaitGroup**](#84-并发安全mutex-和-waitgroup)
@@ -2210,12 +2213,81 @@ func sayHello() {
 
 func main() {
     go sayHello() // 启动 Goroutine
-    time.Sleep(time.Second) // 主程序等待 Goroutine 执行完成
+    time.Sleep(time.Second) // 主程序等待 Goroutine 执行完成 (不推荐的方式)
 }
 ```
 
-- 使用 **`go` 关键字**启动 Goroutine。
+- 使用 **`go` 关键字** 启动 Goroutine。
 - 主程序和 Goroutine 并发执行，因此需要确保主程序不会提前退出。
+- **注意**：使用 `time.Sleep` 来确保主程序等待并不是一种最佳实践，因为它不够精准，也不具有通用性。
+
+### **更优的 Goroutine 同步方式：使用 `sync.WaitGroup`**
+在 Go 中，我们可以使用 **`sync.WaitGroup`** 来更好地控制主 Goroutine 等待其他 Goroutine 完成。`WaitGroup` 提供了一种更可靠的方式来等待多个 Goroutine 执行结束。
+
+**示例：使用 `sync.WaitGroup`**
+
+```go
+package main
+import (
+    "fmt"
+    "sync"
+)
+
+func sayHello(wg *sync.WaitGroup) {
+    defer wg.Done() // 标记当前 Goroutine 完成
+    fmt.Println("Hello from Goroutine!")
+}
+
+func main() {
+    var wg sync.WaitGroup
+    wg.Add(1) // 增加一个待完成的 Goroutine 计数
+
+    go sayHello(&wg) // 启动 Goroutine
+
+    wg.Wait() // 等待所有的 Goroutine 完成
+}
+```
+
+- **`sync.WaitGroup`**：`WaitGroup` 用于等待一组 Goroutine 完成。
+- **`wg.Add(1)`**：增加一个待完成的 Goroutine 计数。
+- **`wg.Done()`**：在 Goroutine 中调用，表示该 Goroutine 执行结束，计数减 1。
+- **`wg.Wait()`**：阻塞主 Goroutine，直到所有 Goroutine 完成。
+
+这种方式更为优雅和灵活，适合需要等待多个 Goroutine 的场景。
+
+### **更进一步：使用 Channel 实现同步**
+另一种确保主 Goroutine 不提前退出的方法是使用 **Channel** 来同步 Goroutine。Channel 是 Go 提供的用于在 Goroutine 之间通信的机制，可以用来发送信号，确保 Goroutine 的执行完成。
+
+**示例：使用 Channel**
+
+```go
+package main
+import "fmt"
+
+func sayHello(done chan bool) {
+    fmt.Println("Hello from Goroutine!")
+    done <- true // 向 Channel 发送完成信号
+}
+
+func main() {
+    done := make(chan bool) // 创建一个无缓冲的 Channel
+    go sayHello(done)       // 启动 Goroutine
+
+    <-done // 接收 Channel 中的信号，等待 Goroutine 完成
+}
+```
+
+- **`done := make(chan bool)`**：创建一个用于同步的 Channel。
+- **`done <- true`**：在 Goroutine 中发送一个完成信号。
+- **`<-done`**：在主 Goroutine 中接收信号，等待子 Goroutine 完成。
+
+这种方法也很简洁且具有通用性，适合用于多个 Goroutine 的通信和同步。
+
+### **总结**
+- 使用 `time.Sleep` 来同步 Goroutine 是一种简单但不可靠的方式，尤其当 Goroutine 执行时间不确定时。
+- 更推荐使用 **`sync.WaitGroup`** 或 **Channel** 来实现 Goroutine 的同步，这样可以确保程序的可靠性和灵活性，避免主 Goroutine 过早退出的问题。
+
+
 
 ---
 
