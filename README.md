@@ -163,11 +163,18 @@
       - [**示例 3：多 Goroutine 日志记录**](#示例-3多-goroutine-日志记录)
     - [**总结**](#总结-1)
   - [**8.3 Select 语句与多通道处理**](#83-select-语句与多通道处理)
+    - [**Select 语句详解**](#select-语句详解)
     - [**示例：使用 Select**](#示例使用-select)
+    - [**示例解释**](#示例解释)
+    - [**多通道处理的常见场景**](#多通道处理的常见场景)
+    - [**`select` 的特点总结**](#select-的特点总结)
+    - [**总结**](#总结-2)
   - [**8.4 并发安全：Mutex 和 WaitGroup**](#84-并发安全mutex-和-waitgroup)
     - [**问题：数据竞争**](#问题数据竞争)
     - [**解决方案 1：Mutex（互斥锁）**](#解决方案-1mutex互斥锁)
-    - [**解决方案 2：WaitGroup**](#解决方案-2waitgroup)
+    - [**解决方案 2：仅使用 WaitGroup**](#解决方案-2仅使用-waitgroup)
+    - [**为什么需要方案 1 和方案 2？**](#为什么需要方案-1-和方案-2)
+    - [**总结**](#总结-3)
   - [**8.5 实战：实现并发爬虫**](#85-实战实现并发爬虫)
     - [**示例：并发爬虫**](#示例并发爬虫)
   - [**8.6 并发模型的最佳实践**](#86-并发模型的最佳实践)
@@ -2498,7 +2505,15 @@ func main() {
 
 ## **8.3 Select 语句与多通道处理**
 
-`select` 语句用于在多个 Channel 之间等待，哪个 Channel 准备好了就执行哪个。
+`select` 语句用于在多个 Channel 之间等待，哪个 Channel 准备好了就执行哪个。这使得我们可以同时监控多个 Channel，从而实现复杂的并发逻辑。
+
+### **Select 语句详解**
+在 Go 中，`select` 类似于 `switch` 语句，但它用于处理 Channel 操作。通过 `select`，你可以在多个 Channel 上同时等待，哪个 Channel 有数据就处理哪个。这在需要处理多个 Goroutine 发送的数据时非常有用。
+
+- **`select`** 会选择第一个可用的 Channel 执行，确保 Goroutine 不会被阻塞。
+- 如果有多个 Channel 同时可用，`select` 会随机选择一个。
+- `select` 语句中的每个 `case` 必须是一个 Channel 操作，比如发送数据或者接收数据。
+- **默认情况**：如果所有的 Channel 都没有数据，`select` 也可以有一个 `default` 分支来立即执行而不阻塞。
 
 ### **示例：使用 Select**
 
@@ -2532,21 +2547,104 @@ func main() {
 }
 ```
 
-- **`select`** 会选择第一个可用的 Channel 执行。
-- 如果有多个 Channel 同时可用，`select` 会随机选择一个。
+**执行结果**：
+```
+Message from ch2
+```
+
+### **示例解释**
+- 在上述示例中，我们创建了两个 Channel：`ch1` 和 `ch2`，并启动了两个 Goroutine 分别向这些 Channel 发送消息。
+- `ch1` 的 Goroutine 会在 2 秒后发送一条消息，而 `ch2` 的 Goroutine 在 1 秒后发送消息。
+- 当执行 `select` 语句时，由于 `ch2` 的消息先到达，因此 `select` 选择了 `ch2` 的分支并输出 "Message from ch2"。
+
+### **多通道处理的常见场景**
+1. **同时监听多个数据源**：当你有多个数据源需要同时监听时，比如多个传感器的输入，可以使用 `select` 语句来实现。
+2. **实现超时机制**：通过结合 `time.After` 函数，`select` 可以很方便地实现超时逻辑。
+
+**示例：实现超时机制**
+```go
+package main
+import (
+    "fmt"
+    "time"
+)
+
+func main() {
+    ch := make(chan string)
+
+    go func() {
+        time.Sleep(3 * time.Second)
+        ch <- "Result after delay"
+    }()
+
+    select {
+    case res := <-ch:
+        fmt.Println(res)
+    case <-time.After(2 * time.Second):
+        fmt.Println("Timeout occurred!")
+    }
+}
+```
+
+**执行结果**：
+```
+Timeout occurred!
+```
+
+**示例解释**：
+- 在这个示例中，`ch` Channel 会在 3 秒后接收到一个结果。
+- 同时，我们使用 `time.After(2 * time.Second)` 创建了一个超时 Channel，如果在 2 秒内没有数据到达 `ch`，就会触发超时逻辑。
+- 由于超时设为 2 秒，而结果需要 3 秒才到达，因此输出 "Timeout occurred!"。
+
+### **`select` 的特点总结**
+- `select` 用于等待多个 Channel 中的任意一个完成操作，是 Go 语言中处理多路 Channel 通信的强大工具。
+- 如果没有 Channel 准备好，`select` 会阻塞，直到其中一个 Channel 可以执行。
+- 可以结合 `default` 语句在所有 Channel 都未准备好时立即执行某些逻辑。
+
+**示例：使用 `default` 避免阻塞**
+```go
+package main
+import "fmt"
+
+func main() {
+    ch := make(chan int)
+
+    select {
+    case msg := <-ch:
+        fmt.Println("Received", msg)
+    default:
+        fmt.Println("No data available, avoiding blocking!")
+    }
+}
+```
+
+**执行结果**：
+```
+No data available, avoiding blocking!
+```
+
+**示例解释**：
+- 在这个例子中，`ch` Channel 没有数据可读，因此 `select` 会直接执行 `default` 分支，避免程序阻塞。
+
+### **总结**
+- `select` 语句可以在多个 Channel 之间选择执行，避免 Goroutine 阻塞。
+- 结合 `time.After` 可以实现超时逻辑，这在实际开发中非常常用。
+- `select` 的 `default` 分支可以用来避免阻塞，使程序更加灵活和健壮。
+
+通过这些示例，我们可以看到 `select` 在多通道处理中的强大能力。它能够简化并发编程中的 Channel 管理，尤其在同时处理多个数据来源或实现超时控制时，非常有用。
 
 ---
 
 ## **8.4 并发安全：Mutex 和 WaitGroup**
 
 ### **问题：数据竞争**
-多个 Goroutine 同时访问同一共享资源时，可能会导致**数据竞争**。
+多个 Goroutine 同时访问同一共享资源时，可能会导致**数据竞争**。数据竞争会导致结果不确定，程序的行为可能变得不可预测。因此，保证并发安全是非常重要的。
 
 ---
 
 ### **解决方案 1：Mutex（互斥锁）**
 
-**`sync.Mutex`** 用于确保同一时间只有一个 Goroutine 能访问共享资源。
+**`sync.Mutex`** 用于确保同一时间只有一个 Goroutine 能访问共享资源。它通过加锁和解锁的机制，避免了多个 Goroutine 同时对同一数据的读写，从而避免数据竞争。
 
 ```go
 package main
@@ -2559,9 +2657,9 @@ var counter = 0
 var mutex = &sync.Mutex{}
 
 func increment(wg *sync.WaitGroup) {
-    mutex.Lock()
-    counter++
-    mutex.Unlock()
+    mutex.Lock()   // 加锁，保证只有一个 Goroutine 进入临界区
+    counter++      // 共享资源的修改
+    mutex.Unlock() // 解锁
     wg.Done()
 }
 
@@ -2576,14 +2674,22 @@ func main() {
 }
 ```
 
+**执行结果**：
+```
+Counter: 5
+```
+
+
 - **`mutex.Lock()`** 和 **`mutex.Unlock()`** 用于加锁和解锁。
 - **`sync.WaitGroup`** 用于等待所有 Goroutine 完成。
 
+在这个例子中，互斥锁 `mutex` 确保了对 `counter` 的访问是线程安全的，避免了多个 Goroutine 同时修改 `counter` 而导致的数据竞争。
+
 ---
 
-### **解决方案 2：WaitGroup**
+### **解决方案 2：仅使用 WaitGroup**
 
-**`sync.WaitGroup`** 用于等待一组 Goroutine 完成执行。
+**`sync.WaitGroup`** 用于等待一组 Goroutine 完成执行。它本身并不能解决数据竞争的问题，但在不涉及共享资源修改的场景中非常有用。
 
 ```go
 package main
@@ -2609,9 +2715,36 @@ func main() {
 }
 ```
 
-- **`wg.Add(1)`**：每启动一个 Goroutine 就调用一次。
+**执行结果**：
+```
+1
+2
+3
+4
+5
+```
+
+**注意**：Goroutine 的输出顺序不保证严格按照 1-5 顺序，实际输出可能是随机顺序，因为每个 Goroutine 的执行时间和调度不可预测。
+
+
+- **`wg.Add(1)`**：每启动一个 Goroutine 就调用一次，表示有一个新的 Goroutine 需要等待。
 - **`wg.Done()`**：在 Goroutine 中调用，表示该 Goroutine 完成。
 - **`wg.Wait()`**：阻塞直到所有 Goroutine 完成。
+
+在这个例子中，每个 Goroutine 只是打印自己的编号，并没有对共享数据进行修改，因此不需要使用互斥锁。`WaitGroup` 只是用于确保主 Goroutine 在所有子 Goroutine 执行完成后再继续。
+
+### **为什么需要方案 1 和方案 2？**
+- **方案 1（Mutex + WaitGroup）** 主要用于解决**数据竞争**问题。当多个 Goroutine 需要修改共享资源时，使用 `Mutex` 来控制对共享资源的访问，以确保线程安全。同时使用 `WaitGroup` 来等待所有 Goroutine 完成。
+- **方案 2（仅使用 WaitGroup）** 适用于**不涉及共享数据修改**的场景，比如简单的并发任务执行（如打印、计算等），只需要保证所有 Goroutine 完成后再继续主 Goroutine 的逻辑。
+
+因此，方案 1 和方案 2 各有其适用的场景：
+- **方案 1**：当需要并发修改共享数据时，`Mutex` 是必要的，以确保多个 Goroutine 之间不会产生数据竞争。
+- **方案 2**：当任务之间相互独立时，只需要通过 `WaitGroup` 来等待所有任务完成，而不涉及共享数据的修改。这样可以避免使用锁，减少因锁带来的性能开销。
+
+### **总结**
+- **Mutex（互斥锁）** 用于保证共享资源在并发环境中的安全访问，防止数据竞争。
+- **WaitGroup** 用于等待多个 Goroutine 完成执行，确保主程序在所有 Goroutine 完成后再继续执行。
+- 两者可以结合使用，也可以在不同场景中单独使用，具体选择取决于是否涉及共享资源的并发修改。
 
 ---
 
