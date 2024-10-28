@@ -2217,6 +2217,12 @@ func main() {
 }
 ```
 
+**执行结果**：
+```
+Hello from Goroutine!
+```
+
+
 - 使用 **`go` 关键字** 启动 Goroutine。
 - 主程序和 Goroutine 并发执行，因此需要确保主程序不会提前退出。
 - **注意**：使用 `time.Sleep` 来确保主程序等待并不是一种最佳实践，因为它不够精准，也不具有通用性。
@@ -2248,6 +2254,12 @@ func main() {
 }
 ```
 
+**执行结果**：
+```
+Hello from Goroutine!
+```
+
+
 - **`sync.WaitGroup`**：`WaitGroup` 用于等待一组 Goroutine 完成。
 - **`wg.Add(1)`**：增加一个待完成的 Goroutine 计数。
 - **`wg.Done()`**：在 Goroutine 中调用，表示该 Goroutine 执行结束，计数减 1。
@@ -2277,6 +2289,12 @@ func main() {
 }
 ```
 
+**执行结果**：
+```
+Hello from Goroutine!
+```
+
+
 - **`done := make(chan bool)`**：创建一个用于同步的 Channel。
 - **`done <- true`**：在 Goroutine 中发送一个完成信号。
 - **`<-done`**：在主 Goroutine 中接收信号，等待子 Goroutine 完成。
@@ -2286,8 +2304,6 @@ func main() {
 ### **总结**
 - 使用 `time.Sleep` 来同步 Goroutine 是一种简单但不可靠的方式，尤其当 Goroutine 执行时间不确定时。
 - 更推荐使用 **`sync.WaitGroup`** 或 **Channel** 来实现 Goroutine 的同步，这样可以确保程序的可靠性和灵活性，避免主 Goroutine 过早退出的问题。
-
-
 
 ---
 
@@ -2311,6 +2327,11 @@ func main() {
     data := <-ch         // 从 Channel 接收数据
     fmt.Println(data)    // 输出：42
 }
+```
+
+**执行结果**：
+```
+42
 ```
 
 - 使用 **`make`** 创建 Channel。
@@ -2353,6 +2374,25 @@ func main() {
     }
 }
 ```
+
+**执行结果**：
+```
+接收到的数据： 10
+接收到的数据： 11
+接收到的数据： 12
+接收到的数据： 13
+接收到的数据： 14
+接收到的数据： 20
+接收到的数据： 21
+接收到的数据： 22
+接收到的数据： 23
+接收到的数据： 24
+接收到的数据： 30
+接收到的数据： 31
+接收到的数据： 32
+接收到的数据： 33
+接收到的数据： 34
+```
 在这个示例中，多个 Goroutine 模拟多个传感器，各自独立采集数据并通过 Channel 发送到主 Goroutine，主 Goroutine 进行汇总和处理。
 
 #### **示例 2：任务分配与结果收集**
@@ -2387,6 +2427,15 @@ func main() {
         fmt.Println("结果：", <-results)
     }
 }
+```
+
+**执行结果**：
+```
+结果： 1
+结果： 4
+结果： 9
+结果： 16
+结果： 25
 ```
 在这个例子中，我们启动了 3 个 worker Goroutine 处理任务，每个 worker 从 `jobs` Channel 中获取任务，计算完成后将结果发送到 `results` Channel。主 Goroutine 负责收集所有结果。
 
@@ -2424,6 +2473,19 @@ func main() {
     time.Sleep(time.Second * 2) // 等待所有 worker 完成任务
     close(logCh) // 关闭日志 Channel
 }
+```
+
+**执行结果**：
+```
+日志： Worker 1: 完成任务 0
+日志： Worker 2: 完成任务 0
+日志： Worker 3: 完成任务 0
+日志： Worker 1: 完成任务 1
+日志： Worker 2: 完成任务 1
+日志： Worker 3: 完成任务 1
+日志： Worker 1: 完成任务 2
+日志： Worker 2: 完成任务 2
+日志： Worker 3: 完成任务 2
 ```
 在这个例子中，多个 worker Goroutine 通过 `logCh` Channel 向独立的日志处理 Goroutine 发送日志信息，保证日志的集中管理和按序输出。
 
